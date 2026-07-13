@@ -10,6 +10,15 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@12
 
 SESSION_LIFETIME_HOURS = 3
 
+TABLE_STATUS_VACANT = "vacant"
+TABLE_STATUS_IN_USE = "in_use"
+TABLE_STATUS_CHECKOUT_WAITING = "checkout_waiting"
+TABLE_STATUS_PAID = "paid"
+
+SESSION_STATUS_ACTIVE = "active"
+SESSION_STATUS_CHECKOUT_WAITING = "checkout_waiting"
+SESSION_STATUS_CLOSED = "closed"
+
 CATEGORY_ORDER = ["定食", "丼もの", "単品・おつまみ", "盛り合わせ", "期間限定", "ドリンク", "酒類"]
 
 OPTION_GROUPS_BY_MENU_ID = {
@@ -216,24 +225,68 @@ def get_or_create_table(label):
     cur.execute("SELECT * FROM tables WHERE label = %s", (label,))
     row = cur.fetchone()
     if row:
+        row = dict(row)
+        if not row.get("qr_token"):
+            cur.execute(
+                "UPDATE tables SET qr_token = %s WHERE id = %s RETURNING *",
+                (uuid.uuid4().hex, row["id"]),
+            )
+            row = dict(cur.fetchone())
         conn.close()
-        return dict(row)
+        return row
     cur.execute(
-        "INSERT INTO tables (label) VALUES (%s) RETURNING *", (label,)
+        "INSERT INTO tables (label, qr_token, status) VALUES (%s, %s, %s) RETURNING *",
+        (label, uuid.uuid4().hex, TABLE_STATUS_VACANT),
     )
     row = cur.fetchone()
     conn.close()
     return dict(row)
 
 
-def get_or_create_active_session(table_id):
+def get_table(table_id):
+    conn = get_conn()
+    cur = dict_cursor(conn)
+    cur.execute("SELECT * FROM tables WHERE id = %s", (table_id,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_table_by_qr_token(qr_token):
+    conn = get_conn()
+    cur = dict_cursor(conn)
+    cur.execute("SELECT * FROM tables WHERE qr_token = %s", (qr_token,))
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_table_use(table_id, customer_num=None):
+    conn = get_conn()
+    cur = dict_cursor(conn)
+    if customer_num is None:
+        cur.execute(
+            "UPDATE tables SET status = %s WHERE id = %s RETURNING *",
+            (TABLE_STATUS_IN_USE, table_id),
+        )
+    else:
+        cur.execute(
+            "UPDATE tables SET status = %s, customer_num = %s WHERE id = %s RETURNING *",
+            (TABLE_STATUS_IN_USE, customer_num, table_id),
+        )
+    row = cur.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_or_create_active_session(table_id, customer_num=None):
     """Reuse an active, unexpired session for this table, or start a new one."""
     conn = get_conn()
     cur = dict_cursor(conn)
     cur.execute(
-        "SELECT * FROM sessions WHERE table_id = %s AND status = 'active' "
+        "SELECT * FROM sessions WHERE table_id = %s AND status IN (%s, %s) "
         "AND expires_at > now() ORDER BY started_at DESC LIMIT 1",
-        (table_id,),
+        (table_id, SESSION_STATUS_ACTIVE, SESSION_STATUS_CHECKOUT_WAITING),
     )
     row = cur.fetchone()
     if row:
@@ -243,10 +296,20 @@ def get_or_create_active_session(table_id):
     token = uuid.uuid4().hex
     expires_at = datetime.now(timezone.utc) + timedelta(hours=SESSION_LIFETIME_HOURS)
     cur.execute(
-        "INSERT INTO sessions (table_id, token, expires_at) VALUES (%s, %s, %s) RETURNING *",
-        (table_id, token, expires_at),
+        "INSERT INTO sessions (table_id, token, expires_at, status) VALUES (%s, %s, %s, %s) RETURNING *",
+        (table_id, token, expires_at, SESSION_STATUS_ACTIVE),
     )
     row = cur.fetchone()
+    if customer_num is None:
+        cur.execute(
+            "UPDATE tables SET status = %s WHERE id = %s",
+            (TABLE_STATUS_IN_USE, table_id),
+        )
+    else:
+        cur.execute(
+            "UPDATE tables SET status = %s, customer_num = %s WHERE id = %s",
+            (TABLE_STATUS_IN_USE, customer_num, table_id),
+        )
     conn.close()
     return dict(row)
 
@@ -262,12 +325,74 @@ def get_session_by_token(token):
 
 def close_session(session_id):
     conn = get_conn()
-    cur = conn.cursor()
+    cur = dict_cursor(conn)
+    cur.execute("SELECT table_id FROM sessions WHERE id = %s", (session_id,))
+    row = cur.fetchone()
     cur.execute(
         "UPDATE sessions SET status = 'closed', ended_at = now() WHERE id = %s",
         (session_id,),
     )
+    if row:
+        cur.execute(
+            "UPDATE tables SET status = %s WHERE id = %s",
+            (TABLE_STATUS_PAID, row["table_id"]),
+        )
     conn.close()
+
+
+def request_checkout(session_id):
+    conn = get_conn()
+    cur = dict_cursor(conn)
+    cur.execute(
+        "UPDATE sessions SET status = %s WHERE id = %s RETURNING table_id",
+        (SESSION_STATUS_CHECKOUT_WAITING, session_id),
+    )
+    row = cur.fetchone()
+    if row:
+        cur.execute(
+            "UPDATE tables SET status = %s WHERE id = %s",
+            (TABLE_STATUS_CHECKOUT_WAITING, row["table_id"]),
+        )
+    conn.close()
+
+
+def complete_session_payment(session_id):
+    orders = get_orders_for_session(session_id)
+    for order in orders:
+        if order["status"] != 3:
+            record_payment(order["id"], order["total"])
+    close_session(session_id)
+
+
+def reset_table(table_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE sessions SET status = %s, ended_at = COALESCE(ended_at, now()) "
+        "WHERE table_id = %s AND status IN (%s, %s)",
+        (SESSION_STATUS_CLOSED, table_id, SESSION_STATUS_ACTIVE, SESSION_STATUS_CHECKOUT_WAITING),
+    )
+    cur.execute(
+        "UPDATE tables SET status = %s, customer_num = 0 WHERE id = %s",
+        (TABLE_STATUS_VACANT, table_id),
+    )
+    conn.close()
+
+
+def get_table_states():
+    conn = get_conn()
+    cur = dict_cursor(conn)
+    cur.execute(
+        "SELECT t.*, s.id AS session_id, s.status AS session_status, s.started_at AS session_started_at "
+        "FROM tables t "
+        "LEFT JOIN LATERAL ("
+        "  SELECT * FROM sessions s WHERE s.table_id = t.id ORDER BY s.started_at DESC LIMIT 1"
+        ") s ON TRUE "
+        "ORDER BY t.label"
+    )
+    rows = [dict(row) for row in cur.fetchall()]
+    conn.close()
+    return rows
 
 
 # ---------- Orders ----------

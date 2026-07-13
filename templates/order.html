@@ -792,7 +792,7 @@
               </div>
               <form class="checkout-form" method="post" action="/bill/checkout">
                 <input class="table-input" type="text" name="table" value="テーブルA" />
-                <button class="checkout-button" id="bill-checkout-button" type="submit">お会計する</button>
+                <button class="checkout-button" id="bill-checkout-button" type="submit">お会計を依頼</button>
               </form>
             </footer>
           </section>
@@ -970,7 +970,19 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        updateCartUI(await res.json());
+        const data = await res.json();
+        if (!res.ok) {
+          updateCartUI({
+            cart: data.cart || [],
+            total: data.cart_total || 0,
+            count: data.cart_count || 0,
+            ordering_locked: data.ordering_locked,
+          });
+          if (data.orders) updateBillUI(data);
+          alert(data.error || "商品を追加できませんでした。");
+          return;
+        }
+        updateCartUI(data);
       }
 
       async function removeFromCart(key) {
@@ -999,7 +1011,7 @@
         document.getElementById("cart-button-label").textContent = `カートを見る (${count}点)`;
         document.getElementById("cart-button-total").textContent = yen(data.total || 0);
         document.getElementById("cart-total").textContent = yen(data.total || 0);
-        document.getElementById("checkout-button").disabled = count === 0;
+        document.getElementById("checkout-button").disabled = count === 0 || !!data.ordering_locked;
 
         const items = document.getElementById("cart-items");
         if (!data.cart || !data.cart.length) {
@@ -1022,12 +1034,16 @@
       function updateBillUI(data) {
         const orders = data.orders || [];
         const hasUnsentCart = (data.cart_count || 0) > 0;
+        const checkoutWaiting = data.table_status === "checkout_waiting" || data.session_status === "checkout_waiting";
         const billOrders = document.getElementById("bill-orders");
         const note = document.getElementById("bill-cart-note");
         document.getElementById("bill-total").textContent = yen(data.total || 0);
-        document.getElementById("bill-checkout-button").disabled = orders.length === 0 || hasUnsentCart;
+        document.getElementById("bill-checkout-button").disabled = orders.length === 0 || hasUnsentCart || checkoutWaiting;
 
-        if (hasUnsentCart) {
+        if (checkoutWaiting) {
+          note.hidden = false;
+          note.textContent = "お会計を依頼済みです。スタッフが会計を完了するまで追加注文はできません。";
+        } else if (hasUnsentCart) {
           note.hidden = false;
           note.textContent = `未送信の商品が${data.cart_count}点あります。先に「注文を送信」すると、お会計に追加されます。`;
         } else {

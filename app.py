@@ -14,6 +14,20 @@ app.secret_key = os.environ.get("SECRET_KEY", "mobile-order-secret")
 
 DEFAULT_TABLE_LABEL = "デフォルト"
 TOKEN_COOKIE = "moa_token"
+STATUS_LABELS = {
+    db.TABLE_STATUS_VACANT: "空席",
+    db.TABLE_STATUS_IN_USE: "利用中",
+    db.TABLE_STATUS_CHECKOUT_WAITING: "会計待ち",
+    db.TABLE_STATUS_PAID: "会計済み",
+    db.SESSION_STATUS_ACTIVE: "利用中",
+    db.SESSION_STATUS_CHECKOUT_WAITING: "会計待ち",
+    db.SESSION_STATUS_CLOSED: "会計済み",
+    0: "未確認",
+    1: "調理中",
+    2: "提供済み",
+    3: "会計済み",
+    4: "キャンセル",
+}
 
 
 class DecimalSafeJSONProvider(DefaultJSONProvider):
@@ -53,7 +67,7 @@ def require_table_session():
     """Ensure the request has a valid table session; returns (session, new_session_or_None).
     If no session cookie is present, transparently starts one on the default table."""
     sess = current_session()
-    if sess and sess["status"] == "active":
+    if sess and sess["status"] in (db.SESSION_STATUS_ACTIVE, db.SESSION_STATUS_CHECKOUT_WAITING):
         return sess, None
     table = db.get_or_create_table(DEFAULT_TABLE_LABEL)
     sess = db.get_or_create_active_session(table["id"])
@@ -65,12 +79,59 @@ def set_session_cookie(resp, sess):
     return resp
 
 
+def customer_num_from_request():
+    raw = request.args.get("customers") or request.args.get("customer_num")
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def table_for_session(sess):
+    return db.get_table(sess["table_id"]) if sess else None
+
+
+def ordering_locked(sess):
+    table = table_for_session(sess)
+    if not sess or sess["status"] != db.SESSION_STATUS_ACTIVE:
+        return True
+    if table and table["status"] in (db.TABLE_STATUS_CHECKOUT_WAITING, db.TABLE_STATUS_PAID):
+        return True
+    return False
+
+
+def session_state_payload(sess):
+    table = table_for_session(sess)
+    table_status = table["status"] if table else None
+    return {
+        "session_status": sess["status"] if sess else None,
+        "session_status_label": STATUS_LABELS.get(sess["status"] if sess else None, ""),
+        "table_status": table_status,
+        "table_status_label": STATUS_LABELS.get(table_status, ""),
+        "customer_num": table.get("customer_num") if table else None,
+        "ordering_locked": ordering_locked(sess),
+    }
+
+
 # ---------- Customer entry points ----------
 
 @app.get("/t/<label>")
 def enter_table(label):
     table = db.get_or_create_table(label)
-    sess = db.get_or_create_active_session(table["id"])
+    sess = db.get_or_create_active_session(table["id"], customer_num_from_request())
+    resp = make_response(redirect(url_for("index")))
+    return set_session_cookie(resp, sess)
+
+
+@app.get("/q/<qr_token>")
+def enter_table_by_qr(qr_token):
+    table = db.get_table_by_qr_token(qr_token)
+    if not table:
+        return "Invalid table QR token", 404
+    sess = db.get_or_create_active_session(table["id"], customer_num_from_request())
     resp = make_response(redirect(url_for("index")))
     return set_session_cookie(resp, sess)
 
@@ -155,6 +216,10 @@ def current_cart():
 
 @app.post("/api/cart/add")
 def add_to_cart():
+    sess, _ = require_table_session()
+    if ordering_locked(sess):
+        return jsonify({"error": "このテーブルは会計待ちのため追加注文できません。", **bill_payload(sess)}), 409
+
     data = request.get_json(silent=True) or {}
     item_id = data.get("item_id")
     qty = max(int(data.get("qty", 1)), 1)
@@ -196,6 +261,12 @@ def get_bill():
     return jsonify(bill_payload(sess))
 
 
+@app.get("/api/menu")
+def api_menu():
+    sess, _ = require_table_session()
+    return jsonify({"menu": db.get_menu(), **session_state_payload(sess)})
+
+
 def order_for_api(order):
     items = []
     for item in order["items"]:
@@ -230,6 +301,7 @@ def bill_payload(sess):
         "cart": cart,
         "cart_total": cs["total"],
         "cart_count": cs["count"],
+        **session_state_payload(sess),
     }
 
 
@@ -253,6 +325,9 @@ def cart_to_db_lines(cart):
 @app.post("/order")
 def place_order():
     sess, _ = require_table_session()
+    if ordering_locked(sess):
+        return "このテーブルは会計待ちのため追加注文できません。", 409
+
     cart = current_cart()
 
     order = None
@@ -284,6 +359,9 @@ def place_order():
 @app.post("/api/orders")
 def create_order_api():
     sess, _ = require_table_session()
+    if ordering_locked(sess):
+        return jsonify({"error": "このテーブルは会計待ちのため追加注文できません。", **bill_payload(sess)}), 409
+
     cart = current_cart()
     if not cart:
         return jsonify({"error": "カートが空です。商品をもう一度追加してください。", **bill_payload(sess)}), 400
@@ -299,34 +377,56 @@ def create_order_api():
     return jsonify(bill_payload(sess))
 
 
+@app.post("/api/order")
+def create_order_api_compat():
+    return create_order_api()
+
+
+@app.get("/api/order/status")
+def order_status_api():
+    sess, _ = require_table_session()
+    return jsonify(bill_payload(sess))
+
+
+@app.post("/api/checkout")
+def request_checkout_api():
+    sess, _ = require_table_session()
+    payload = bill_payload(sess)
+    if payload["cart_count"] > 0:
+        return jsonify({"error": "未送信の商品があります。先に注文を送信してください。", **payload}), 400
+    if payload["order_count"] == 0:
+        return jsonify({"error": "まだ注文がありません。", **payload}), 400
+
+    db.request_checkout(sess["id"])
+    refreshed = db.get_session_by_token(sess["token"])
+    return jsonify(bill_payload(refreshed))
+
+
 @app.post("/bill/checkout")
 def checkout_bill():
     sess, _ = require_table_session()
     cart = current_cart()
 
-    if cart:
+    if cart and not ordering_locked(sess):
         db.create_order(sess["table_id"], sess["id"], cart_to_db_lines(cart))
         session["cart"] = []
         session.modified = True
 
     orders = db.get_orders_for_session(sess["id"])
     total = int(round(sum(float(o["total"]) for o in orders)))
-
-    for o in orders:
-        db.record_payment(o["id"], o["total"])
-    db.close_session(sess["id"])
+    if orders:
+        db.request_checkout(sess["id"])
 
     resp = make_response(
         render_template(
             "receipt.html",
-            mode="bill",
+            mode="bill_request",
             table=db_table_label(sess["table_id"]),
             orders=[order_for_receipt(o) for o in orders],
             total=total,
             bill_id=str(sess["id"])[:8].upper(),
         )
     )
-    resp.delete_cookie(TOKEN_COOKIE)
     return resp
 
 
@@ -368,6 +468,13 @@ def current_staff():
     return dict(row) if row else None
 
 
+def require_staff():
+    staff = current_staff()
+    if not staff:
+        return None, redirect(url_for("admin_login_form"))
+    return staff, None
+
+
 @app.get("/admin/login")
 def admin_login_form():
     return render_template("admin_login.html", error=None)
@@ -392,12 +499,38 @@ def admin_logout():
 
 @app.get("/admin")
 def admin():
-    staff = current_staff()
-    if not staff:
-        return redirect(url_for("admin_login_form"))
+    staff, redirect_resp = require_staff()
+    if redirect_resp:
+        return redirect_resp
     orders = db.get_all_orders()
+    tables = db.get_table_states()
     grand_total = sum(float(o["total"]) for o in orders)
-    return render_template("admin.html", orders=orders, grand_total=grand_total, staff=staff)
+    return render_template(
+        "admin.html",
+        orders=orders,
+        tables=tables,
+        grand_total=grand_total,
+        staff=staff,
+        status_labels=STATUS_LABELS,
+    )
+
+
+@app.post("/admin/sessions/<session_id>/paid")
+def admin_mark_session_paid(session_id):
+    _, redirect_resp = require_staff()
+    if redirect_resp:
+        return redirect_resp
+    db.complete_session_payment(session_id)
+    return redirect(url_for("admin"))
+
+
+@app.post("/admin/tables/<table_id>/reset")
+def admin_reset_table(table_id):
+    _, redirect_resp = require_staff()
+    if redirect_resp:
+        return redirect_resp
+    db.reset_table(table_id)
+    return redirect(url_for("admin"))
 
 
 if __name__ == "__main__":

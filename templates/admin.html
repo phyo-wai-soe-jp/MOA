@@ -16,6 +16,7 @@
       h1 { margin: 0; }
       .logout { color: #aaa; font-size: 13px; text-decoration: none; }
       .summary { color: #aaa; margin-bottom: 20px; }
+      h2 { margin: 28px 0 12px; font-size: 20px; }
       table {
         width: 100%;
         border-collapse: collapse;
@@ -48,6 +49,29 @@
         background: #333;
         color: #ccc;
       }
+      .status-waiting { background: #4a2d12; color: #fbbf24; }
+      .status-active { background: #123b2a; color: #34d399; }
+      .status-paid { background: #1f2f4a; color: #93c5fd; }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .action-button {
+        min-height: 32px;
+        border: 0;
+        border-radius: 6px;
+        padding: 0 10px;
+        background: #0b8ff2;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .action-button.secondary {
+        background: #444;
+        color: #ddd;
+      }
     </style>
   </head>
   <body>
@@ -57,6 +81,52 @@
     </div>
     <div class="summary">合計 {{ orders|length }} 件 / 総売上 ¥{{ "%.0f"|format(grand_total) }}</div>
 
+    <h2>テーブル状態</h2>
+    {% if tables %}
+      <table>
+        <thead>
+          <tr>
+            <th>テーブル</th>
+            <th>状態</th>
+            <th>人数</th>
+            <th>QR Token</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for table in tables %}
+            <tr>
+              <td>{{ table.label }}</td>
+              <td>
+                <span class="status {% if table.status == 'checkout_waiting' %}status-waiting{% elif table.status == 'in_use' %}status-active{% elif table.status == 'paid' %}status-paid{% endif %}">
+                  {{ status_labels.get(table.status, table.status) }}
+                </span>
+              </td>
+              <td>{{ table.customer_num or "-" }}</td>
+              <td class="opt">{{ table.qr_token or "-" }}</td>
+              <td>
+                <div class="actions">
+                  {% if table.session_id and table.status == 'checkout_waiting' %}
+                    <form method="post" action="/admin/sessions/{{ table.session_id }}/paid">
+                      <button class="action-button" type="submit">会計済みにする</button>
+                    </form>
+                  {% endif %}
+                  {% if table.status != 'vacant' %}
+                    <form method="post" action="/admin/tables/{{ table.id }}/reset">
+                      <button class="action-button secondary" type="submit">空席に戻す</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">まだテーブルはありません。</div>
+    {% endif %}
+
+    <h2>注文一覧</h2>
     {% if orders %}
       <table>
         <thead>
@@ -84,7 +154,7 @@
                   </div>
                 {% endfor %}
               </td>
-              <td><span class="status">{{ order.status }}</span></td>
+              <td><span class="status">{{ status_labels.get(order.status, order.status) }}</span></td>
               <td class="total">¥{{ "%.0f"|format(order.total) }}</td>
               <td>{{ order.created_at }}</td>
             </tr>

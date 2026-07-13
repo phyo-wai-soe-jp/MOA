@@ -44,8 +44,17 @@ CREATE TABLE IF NOT EXISTS tables (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     label VARCHAR(50) UNIQUE NOT NULL,
     seats INT,
+    qr_token VARCHAR(128),
+    customer_num INT DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'vacant',
     is_active BOOLEAN DEFAULT TRUE
 );
+
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS qr_token VARCHAR(128);
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS customer_num INT DEFAULT 0;
+ALTER TABLE tables ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'vacant';
+UPDATE tables SET customer_num = 0 WHERE customer_num IS NULL;
+UPDATE tables SET status = 'vacant' WHERE status IS NULL;
 
 CREATE TABLE IF NOT EXISTS qr_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -134,3 +143,4 @@ CREATE INDEX IF NOT EXISTS idx_orders_session ON orders(session_id);
 CREATE INDEX IF NOT EXISTS idx_orders_table ON orders(table_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tables_qr_token ON tables(qr_token) WHERE qr_token IS NOT NULL;
