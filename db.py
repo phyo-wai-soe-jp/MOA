@@ -19,6 +19,12 @@ SESSION_STATUS_ACTIVE = "active"
 SESSION_STATUS_CHECKOUT_WAITING = "checkout_waiting"
 SESSION_STATUS_CLOSED = "closed"
 
+ORDER_STATUS_RECEIVED = 0
+ORDER_STATUS_PREPARING = 1
+ORDER_STATUS_SERVED = 2
+ORDER_STATUS_PAID = 3
+ORDER_STATUS_CANCELLED = 4
+
 CATEGORY_ORDER = ["定食", "丼もの", "単品・おつまみ", "盛り合わせ", "期間限定", "ドリンク", "酒類"]
 
 OPTION_GROUPS_BY_MENU_ID = {
@@ -383,12 +389,23 @@ def get_table_states():
     conn = get_conn()
     cur = dict_cursor(conn)
     cur.execute(
-        "SELECT t.*, s.id AS session_id, s.status AS session_status, s.started_at AS session_started_at "
+        "SELECT t.*, s.id AS session_id, s.status AS session_status, s.started_at AS session_started_at, "
+        "CASE "
+        "  WHEN s.status = %s THEN %s "
+        "  WHEN s.status = %s THEN %s "
+        "  ELSE t.status "
+        "END AS effective_status "
         "FROM tables t "
         "LEFT JOIN LATERAL ("
         "  SELECT * FROM sessions s WHERE s.table_id = t.id ORDER BY s.started_at DESC LIMIT 1"
         ") s ON TRUE "
-        "ORDER BY t.label"
+        "ORDER BY t.label",
+        (
+            SESSION_STATUS_CHECKOUT_WAITING,
+            TABLE_STATUS_CHECKOUT_WAITING,
+            SESSION_STATUS_ACTIVE,
+            TABLE_STATUS_IN_USE,
+        ),
     )
     rows = [dict(row) for row in cur.fetchall()]
     conn.close()
@@ -492,6 +509,23 @@ def get_all_orders(limit=200):
     return result
 
 
+def update_order_status(order_id, status, changed_by="staff"):
+    conn = get_conn()
+    cur = dict_cursor(conn)
+    cur.execute(
+        "UPDATE orders SET status = %s, updated_at = now() WHERE id = %s RETURNING *",
+        (status, order_id),
+    )
+    order = cur.fetchone()
+    if order:
+        cur.execute(
+            "INSERT INTO order_status_history (order_id, status, changed_by) VALUES (%s, %s, %s)",
+            (order_id, status, changed_by),
+        )
+    conn.close()
+    return dict(order) if order else None
+
+
 def record_payment(order_id, amount, method="cash"):
     conn = get_conn()
     cur = conn.cursor()
@@ -502,7 +536,7 @@ def record_payment(order_id, amount, method="cash"):
     cur.execute("UPDATE orders SET status = 3, updated_at = now() WHERE id = %s", (order_id,))
     cur.execute(
         "INSERT INTO order_status_history (order_id, status, changed_by) VALUES (%s, %s, %s)",
-        (order_id, 3, "system"),
+        (order_id, ORDER_STATUS_PAID, "system"),
     )
     conn.close()
 

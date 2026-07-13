@@ -52,6 +52,9 @@
       .status-waiting { background: #4a2d12; color: #fbbf24; }
       .status-active { background: #123b2a; color: #34d399; }
       .status-paid { background: #1f2f4a; color: #93c5fd; }
+      .status-received { background: #4a2d12; color: #fbbf24; }
+      .status-preparing { background: #123b2a; color: #34d399; }
+      .status-served { background: #1f2f4a; color: #93c5fd; }
       .actions {
         display: flex;
         flex-wrap: wrap;
@@ -72,6 +75,11 @@
         background: #444;
         color: #ddd;
       }
+      .hint {
+        color: #aaa;
+        font-size: 13px;
+        margin: -6px 0 12px;
+      }
     </style>
   </head>
   <body>
@@ -82,6 +90,7 @@
     <div class="summary">合計 {{ orders|length }} 件 / 総売上 ¥{{ "%.0f"|format(grand_total) }}</div>
 
     <h2>テーブル状態</h2>
+    <div class="hint">お客様が「お会計を依頼」したら、ここで「会計済みにする」を押すと次の注文ができる状態になります。</div>
     {% if tables %}
       <table>
         <thead>
@@ -98,20 +107,20 @@
             <tr>
               <td>{{ table.label }}</td>
               <td>
-                <span class="status {% if table.status == 'checkout_waiting' %}status-waiting{% elif table.status == 'in_use' %}status-active{% elif table.status == 'paid' %}status-paid{% endif %}">
-                  {{ status_labels.get(table.status, table.status) }}
+                <span class="status {% if table.effective_status == 'checkout_waiting' %}status-waiting{% elif table.effective_status == 'in_use' %}status-active{% elif table.effective_status == 'paid' %}status-paid{% endif %}">
+                  {{ status_labels.get(table.effective_status, table.effective_status) }}
                 </span>
               </td>
               <td>{{ table.customer_num or "-" }}</td>
               <td class="opt">{{ table.qr_token or "-" }}</td>
               <td>
                 <div class="actions">
-                  {% if table.session_id and table.status == 'checkout_waiting' %}
+                  {% if table.session_id and table.effective_status == 'checkout_waiting' %}
                     <form method="post" action="/admin/sessions/{{ table.session_id }}/paid">
                       <button class="action-button" type="submit">会計済みにする</button>
                     </form>
                   {% endif %}
-                  {% if table.status != 'vacant' %}
+                  {% if table.effective_status != 'vacant' %}
                     <form method="post" action="/admin/tables/{{ table.id }}/reset">
                       <button class="action-button secondary" type="submit">空席に戻す</button>
                     </form>
@@ -127,6 +136,7 @@
     {% endif %}
 
     <h2>注文一覧</h2>
+    <div class="hint">新しい注文は「確認する」で調理中にし、商品を出したら「提供済みにする」を押します。</div>
     {% if orders %}
       <table>
         <thead>
@@ -137,6 +147,7 @@
             <th>状態</th>
             <th>合計</th>
             <th>日時</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -154,9 +165,28 @@
                   </div>
                 {% endfor %}
               </td>
-              <td><span class="status">{{ status_labels.get(order.status, order.status) }}</span></td>
+              <td>
+                <span class="status {% if order.status == 0 %}status-received{% elif order.status == 1 %}status-preparing{% elif order.status == 2 %}status-served{% elif order.status == 3 %}status-paid{% endif %}">
+                  {{ status_labels.get(order.status, order.status) }}
+                </span>
+              </td>
               <td class="total">¥{{ "%.0f"|format(order.total) }}</td>
               <td>{{ order.created_at }}</td>
+              <td>
+                <div class="actions">
+                  {% if order.status == 0 %}
+                    <form method="post" action="/admin/orders/{{ order.id }}/accept">
+                      <button class="action-button" type="submit">確認する</button>
+                    </form>
+                  {% elif order.status == 1 %}
+                    <form method="post" action="/admin/orders/{{ order.id }}/served">
+                      <button class="action-button" type="submit">提供済みにする</button>
+                    </form>
+                  {% else %}
+                    <span class="opt">-</span>
+                  {% endif %}
+                </div>
+              </td>
             </tr>
           {% endfor %}
         </tbody>

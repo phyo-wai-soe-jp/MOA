@@ -22,11 +22,11 @@ STATUS_LABELS = {
     db.SESSION_STATUS_ACTIVE: "利用中",
     db.SESSION_STATUS_CHECKOUT_WAITING: "会計待ち",
     db.SESSION_STATUS_CLOSED: "会計済み",
-    0: "未確認",
-    1: "調理中",
-    2: "提供済み",
-    3: "会計済み",
-    4: "キャンセル",
+    db.ORDER_STATUS_RECEIVED: "未確認",
+    db.ORDER_STATUS_PREPARING: "調理中",
+    db.ORDER_STATUS_SERVED: "提供済み",
+    db.ORDER_STATUS_PAID: "会計済み",
+    db.ORDER_STATUS_CANCELLED: "キャンセル",
 }
 
 
@@ -521,6 +521,24 @@ def admin_mark_session_paid(session_id):
     if redirect_resp:
         return redirect_resp
     db.complete_session_payment(session_id)
+    return redirect(url_for("admin"))
+
+
+@app.post("/admin/orders/<order_id>/accept")
+def admin_accept_order(order_id):
+    staff, redirect_resp = require_staff()
+    if redirect_resp:
+        return redirect_resp
+    db.update_order_status(order_id, db.ORDER_STATUS_PREPARING, changed_by=staff["email"])
+    return redirect(url_for("admin"))
+
+
+@app.post("/admin/orders/<order_id>/served")
+def admin_mark_order_served(order_id):
+    staff, redirect_resp = require_staff()
+    if redirect_resp:
+        return redirect_resp
+    db.update_order_status(order_id, db.ORDER_STATUS_SERVED, changed_by=staff["email"])
     return redirect(url_for("admin"))
 
 
