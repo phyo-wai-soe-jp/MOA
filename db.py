@@ -1,3 +1,4 @@
+import csv
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -9,6 +10,38 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@12
 
 SESSION_LIFETIME_HOURS = 3
 
+CATEGORY_ORDER = ["定食", "丼もの", "単品・おつまみ", "盛り合わせ", "期間限定"]
+
+OPTION_GROUPS_BY_MENU_ID = {
+    1: ["ご飯の量", "唐揚げの個数", "ソース追加"],
+    2: ["ご飯の量", "唐揚げの個数", "ソース追加"],
+    7: ["ソース追加"],
+    10: ["ソース追加"],
+}
+
+OPTION_GROUPS = {
+    "ご飯の量": [
+        {"name": "小盛り（少なめ）", "price_delta": -50, "is_default": False},
+        {"name": "普通", "price_delta": 0, "is_default": True},
+        {"name": "大盛り", "price_delta": 100, "is_default": False},
+        {"name": "特盛り（ガッツリ！）", "price_delta": 200, "is_default": False},
+    ],
+    "唐揚げの個数": [
+        {"name": "3個（少なめ）", "price_delta": -100, "is_default": False},
+        {"name": "4個（標準）", "price_delta": 0, "is_default": True},
+        {"name": "6個（満腹）", "price_delta": 250, "is_default": False},
+    ],
+    "ソース追加": [
+        {"name": "なし（プレーン）", "price_delta": 0, "is_default": True},
+        {"name": "自慢のマヨネーズ", "price_delta": 0, "is_default": False},
+        {"name": "特製タルタルソース", "price_delta": 50, "is_default": False},
+        {"name": "ねぎ塩だれ（さっぱり）", "price_delta": 60, "is_default": False},
+        {"name": "ハニーマスタード", "price_delta": 70, "is_default": False},
+        {"name": "激辛レッドソース", "price_delta": 80, "is_default": False},
+        {"name": "レモン（追加用1個）", "price_delta": 200, "is_default": False},
+    ],
+}
+
 
 def get_conn():
     conn = psycopg2.connect(DATABASE_URL)
@@ -18,6 +51,86 @@ def get_conn():
 
 def dict_cursor(conn):
     return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+
+# ---------- Schema / seed ----------
+
+def ensure_database():
+    base_dir = os.path.dirname(__file__)
+    menu_path = os.path.join(base_dir, "menu.csv")
+    schema_path = os.path.join(base_dir, "schema.sql")
+
+    with open(menu_path, newline="", encoding="utf-8") as f:
+        menu_rows = list(csv.DictReader(f))
+
+    conn = get_conn()
+    cur = dict_cursor(conn)
+    with open(schema_path, encoding="utf-8") as f:
+        cur.execute(f.read())
+
+    cur.execute("SELECT COUNT(*) AS n FROM menu_items")
+    menu_count = cur.fetchone()["n"]
+    cur.execute("SELECT COUNT(*) AS n FROM order_items")
+    has_order_history = cur.fetchone()["n"] > 0
+    if has_order_history or menu_count == len(menu_rows):
+        conn.close()
+        return
+
+    cur.execute("DELETE FROM option_choices")
+    cur.execute("DELETE FROM option_groups")
+    cur.execute("DELETE FROM menu_items")
+    cur.execute("DELETE FROM menu_categories")
+
+    category_ids = {}
+    for i, name in enumerate(CATEGORY_ORDER):
+        cur.execute(
+            "INSERT INTO menu_categories (name, sort_order) VALUES (%s, %s) RETURNING id",
+            (name, i),
+        )
+        category_ids[name] = cur.fetchone()["id"]
+
+    item_ids = {}
+    for i, row in enumerate(menu_rows):
+        menu_id = int(row["menu_id"])
+        cur.execute(
+            "INSERT INTO menu_items (category_id, name, base_price, image_url, description, sort_order) "
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (
+                category_ids[row["category"].strip()],
+                row["name"].strip(),
+                int(row["base_price"]),
+                row["image_url"].strip() or None,
+                row.get("description", "").strip() or None,
+                i + 1,
+            ),
+        )
+        item_ids[menu_id] = cur.fetchone()["id"]
+
+    for menu_id, group_names in OPTION_GROUPS_BY_MENU_ID.items():
+        item_id = item_ids.get(menu_id)
+        if not item_id:
+            continue
+        for gi, group_name in enumerate(group_names):
+            cur.execute(
+                "INSERT INTO option_groups (item_id, name, selection_type, is_required, sort_order) "
+                "VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                (item_id, group_name, "single", True, gi),
+            )
+            group_id = cur.fetchone()["id"]
+            for ci, choice in enumerate(OPTION_GROUPS[group_name]):
+                cur.execute(
+                    "INSERT INTO option_choices (group_id, name, price_delta, is_default, sort_order) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (
+                        group_id,
+                        choice["name"],
+                        choice["price_delta"],
+                        choice["is_default"],
+                        ci,
+                    ),
+                )
+
+    conn.close()
 
 
 # ---------- Menu ----------

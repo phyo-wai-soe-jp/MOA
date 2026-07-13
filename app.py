@@ -27,6 +27,8 @@ class DecimalSafeJSONProvider(DefaultJSONProvider):
 
 app.json = DecimalSafeJSONProvider(app)
 
+db.ensure_database()
+
 
 def init_admin():
     email = os.environ.get("ADMIN_EMAIL")
