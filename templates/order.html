@@ -1087,7 +1087,18 @@
         });
 
         if (!res.ok) {
-          await loadCart();
+          const data = await res.json().catch(() => null);
+          if (data) {
+            updateCartUI({
+              cart: data.cart || [],
+              total: data.cart_total || 0,
+              count: data.cart_count || 0,
+            });
+            if (data.orders) updateBillUI(data);
+          } else {
+            await loadCart();
+          }
+          alert((data && data.error) || "注文を送信できませんでした。ページを更新してもう一度お試しください。");
           return;
         }
 

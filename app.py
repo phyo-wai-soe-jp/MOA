@@ -132,6 +132,27 @@ def cart_summary(cart):
     return {"cart": cart, "total": total, "count": count}
 
 
+def current_cart():
+    cart = session.get("cart", [])
+    cleaned = []
+
+    for line in cart:
+        choice_ids = [
+            opt.get("choice_id")
+            for opt in line.get("options", [])
+            if opt.get("choice_id")
+        ]
+        rebuilt = build_cart_line(line.get("item_id"), line.get("qty", 1), choice_ids)
+        if rebuilt:
+            cleaned.append(rebuilt)
+
+    if cleaned != cart:
+        session["cart"] = cleaned
+        session.modified = True
+
+    return cleaned
+
+
 @app.post("/api/cart/add")
 def add_to_cart():
     data = request.get_json(silent=True) or {}
@@ -166,7 +187,7 @@ def remove_from_cart():
 
 @app.get("/api/cart")
 def get_cart():
-    return jsonify(cart_summary(session.get("cart", [])))
+    return jsonify(cart_summary(current_cart()))
 
 
 @app.get("/api/bill")
@@ -199,7 +220,7 @@ def bill_payload(sess):
     orders = db.get_orders_for_session(sess["id"])
     total = int(round(sum(float(o["total"]) for o in orders)))
     count = sum(sum(i["quantity"] for i in o["items"]) for o in orders)
-    cart = session.get("cart", [])
+    cart = current_cart()
     cs = cart_summary(cart)
     return {
         "orders": [order_for_api(o) for o in orders],
@@ -232,7 +253,7 @@ def cart_to_db_lines(cart):
 @app.post("/order")
 def place_order():
     sess, _ = require_table_session()
-    cart = session.get("cart", [])
+    cart = current_cart()
 
     order = None
     if cart:
@@ -263,11 +284,16 @@ def place_order():
 @app.post("/api/orders")
 def create_order_api():
     sess, _ = require_table_session()
-    cart = session.get("cart", [])
+    cart = current_cart()
     if not cart:
-        return jsonify({"error": "Cart is empty", **bill_payload(sess)}), 400
+        return jsonify({"error": "カートが空です。商品をもう一度追加してください。", **bill_payload(sess)}), 400
 
-    db.create_order(sess["table_id"], sess["id"], cart_to_db_lines(cart))
+    try:
+        db.create_order(sess["table_id"], sess["id"], cart_to_db_lines(cart))
+    except Exception:
+        app.logger.exception("Failed to create order")
+        return jsonify({"error": "注文を送信できませんでした。ページを更新してもう一度お試しください。", **bill_payload(sess)}), 500
+
     session["cart"] = []
     session.modified = True
     return jsonify(bill_payload(sess))
@@ -276,7 +302,7 @@ def create_order_api():
 @app.post("/bill/checkout")
 def checkout_bill():
     sess, _ = require_table_session()
-    cart = session.get("cart", [])
+    cart = current_cart()
 
     if cart:
         db.create_order(sess["table_id"], sess["id"], cart_to_db_lines(cart))
