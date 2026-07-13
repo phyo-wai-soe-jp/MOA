@@ -75,10 +75,18 @@
         background: #444;
         color: #ddd;
       }
+      .action-button.danger {
+        background: #b91c1c;
+      }
       .hint {
         color: #aaa;
         font-size: 13px;
         margin: -6px 0 12px;
+      }
+      .admin-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin: 20px 0 6px;
       }
     </style>
   </head>
@@ -88,6 +96,11 @@
       <a class="logout" href="/admin/logout">{{ staff.name }} — ログアウト</a>
     </div>
     <div class="summary">合計 {{ orders|length }} 件 / 総売上 ¥{{ "%.0f"|format(grand_total) }}</div>
+    <div class="admin-actions">
+      <form method="post" action="/admin/reset-data" onsubmit="return confirm('注文履歴とセッションをすべて削除します。よろしいですか？');">
+        <button class="action-button danger" type="submit">注文・セッションをリセット</button>
+      </form>
+    </div>
 
     <h2>テーブル状態</h2>
     <div class="hint">お客様が「お会計を依頼」したら、ここで「会計済みにする」を押すと次の注文ができる状態になります。</div>

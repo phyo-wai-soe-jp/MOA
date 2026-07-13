@@ -551,6 +551,18 @@ def admin_reset_table(table_id):
     return redirect(url_for("admin"))
 
 
+@app.post("/admin/reset-data")
+def admin_reset_data():
+    staff, redirect_resp = require_staff()
+    if redirect_resp:
+        return redirect_resp
+    if int(staff.get("role") or 0) < 1:
+        return "権限がありません", 403
+    db.reset_runtime_data()
+    session.pop("cart", None)
+    return redirect(url_for("admin"))
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"

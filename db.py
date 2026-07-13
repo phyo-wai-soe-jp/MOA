@@ -385,6 +385,23 @@ def reset_table(table_id):
     conn.close()
 
 
+def reset_runtime_data():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM payments")
+    cur.execute("DELETE FROM order_status_history")
+    cur.execute("DELETE FROM order_item_options")
+    cur.execute("DELETE FROM order_items")
+    cur.execute("DELETE FROM orders")
+    cur.execute("DELETE FROM sessions")
+    cur.execute(
+        "UPDATE tables SET status = %s, customer_num = 0",
+        (TABLE_STATUS_VACANT,),
+    )
+    cur.execute("ALTER SEQUENCE IF EXISTS orders_order_number_seq RESTART WITH 1")
+    conn.close()
+
+
 def get_table_states():
     conn = get_conn()
     cur = dict_cursor(conn)
