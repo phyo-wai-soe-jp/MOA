@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mobile Order</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #806b6b;
+        --screen: #303131;
+        --header: #2d2e2e;
+        --tile: #151616;
+        --line: #505050;
+        --muted: #9f9f9f;
+        --text: #f1f1f1;
+        --blue: #0b8ff2;
+        --blue-dark: #08659c;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans",
+          "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", Meiryo,
+          sans-serif;
+        letter-spacing: 0;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .page {
+        display: flex;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 46px 16px;
+      }
+
+      .app {
+        position: relative;
+        width: min(100%, 420px);
+        height: min(1406px, calc(100vh - 92px));
+        min-height: 720px;
+        overflow: hidden;
+        background: var(--screen);
+        border: 8px solid #151515;
+        border-radius: 16px;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+
+      .screen {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--screen);
+      }
+
+      .screen[hidden] {
+        display: none;
+      }
+
+      .app-header {
+        height: 104px;
+        flex: 0 0 104px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        padding: 11px 10px 0;
+        background: var(--header);
+        border-bottom: 2px solid var(--line);
+      }
+
+      .eyebrow {
+        color: #e3e3e3;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      .title {
+        margin-top: 2px;
+        font-size: 40px;
+        font-weight: 400;
+        line-height: 1.08;
+      }
+
+      .bill-button {
+        min-width: 101px;
+        height: 53px;
+        margin-top: 29px;
+        border: 0;
+        border-radius: 8px;
+        background: #0878d8;
+        color: #fff;
+        font-size: 23px;
+        font-weight: 700;
+      }
+
+      .back-button {
+        display: block;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #e3e3e3;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        height: 62px;
+        flex: 0 0 62px;
+        align-items: center;
+        overflow-x: auto;
+        padding: 10px;
+        border-bottom: 1px solid #353535;
+        scrollbar-width: none;
+      }
+
+      .tabs::-webkit-scrollbar {
+        display: none;
+      }
+
+      .tab {
+        flex: 0 0 auto;
+        min-width: 82px;
+        height: 42px;
+        padding: 0 14px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--tile);
+        color: #eee;
+        font-size: 18px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .tab.is-active,
+      .pill.is-active,
+      .sauce.is-active {
+        background: var(--blue-dark);
+        box-shadow: inset 0 0 0 4px #145880;
+      }
+
+      .menu-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 26px 9px 88px;
+      }
+
+      .menu-row {
+        display: grid;
+        grid-template-columns: 76px minmax(0, 1fr) 39px;
+        gap: 22px;
+        align-items: center;
+        width: 100%;
+        min-height: 116px;
+        margin-bottom: 18px;
+        padding: 15px 12px 15px 17px;
+        border: 0;
+        border-radius: 16px;
+        background: var(--tile);
+        color: var(--text);
+        text-align: left;
+      }
+
+      .thumb,
+      .hero-image {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ddd;
+      }
+
+      .thumb {
+        width: 76px;
+        height: 82px;
+        border-radius: 11px;
+        overflow: hidden;
+      }
+
+      .thumb svg {
+        width: 42px;
+        height: 42px;
+      }
+
+      .thumb img,
+      .hero-image img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .menu-name {
+        display: -webkit-box;
+        overflow: hidden;
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.25;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .menu-price {
+        display: block;
+        margin-top: 14px;
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .add-circle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 39px;
+        height: 39px;
+        border: 2px solid #acacac;
+        border-radius: 50%;
+        font-size: 34px;
+        font-weight: 300;
+        line-height: 1;
+      }
+
+      .bottom-bar {
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        bottom: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 61px;
+        padding: 0 27px 0 19px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--blue);
+        color: #fff;
+        font-size: 21px;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .bottom-bar:disabled {
+        opacity: 0.65;
+      }
+
+      .cart-label {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 8px;
+      }
+
+      .cart-icon {
+        width: 28px;
+        height: 28px;
+        flex: 0 0 auto;
+      }
+
+      .cart-price {
+        font-weight: 400;
+        white-space: nowrap;
+      }
+
+      .detail-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px 22px 92px;
+      }
+
+      .hero-image {
+        width: 100%;
+        max-width: 100%;
+        height: 152px;
+        margin: 0 auto 22px;
+        border-radius: 18px;
+        overflow: hidden;
+      }
+
+      .hero-image svg {
+        width: 92px;
+        height: 72px;
+      }
+
+      .product-title {
+        margin: 0;
+        font-size: 25px;
+        font-weight: 700;
+        line-height: 1.22;
+        overflow-wrap: anywhere;
+      }
+
+      .product-subtitle {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.2;
+      }
+
+      .product-description {
+        margin: 18px 0 30px;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.42;
+        overflow-wrap: anywhere;
+      }
+
+      .option-group {
+        margin-bottom: 26px;
+      }
+
+      .option-label {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .segmented {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px 10px;
+        align-items: start;
+      }
+
+      .choice {
+        min-width: 0;
+        text-align: center;
+      }
+
+      .pill {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: 48px;
+        height: auto;
+        padding: 8px 10px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--tile);
+        color: #e9e9e9;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1.18;
+        overflow-wrap: anywhere;
+        text-align: center;
+        white-space: normal;
+      }
+
+      .modifier-price {
+        min-height: 19px;
+        margin-top: 6px;
+        color: #a8a8a8;
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .quantity {
+        margin: 22px 0 30px;
+      }
+
+      .quantity-controls {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        margin-top: 13px;
+      }
+
+      .round-button {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 1.5px solid #e2e2e2;
+        border-radius: 50%;
+        background: transparent;
+        color: #eee;
+        font-size: 22px;
+        line-height: 20px;
+      }
+
+      .quantity-value {
+        min-width: 18px;
+        text-align: center;
+        font-size: 20px;
+        line-height: 1;
+      }
+
+      .sauce-list {
+        display: grid;
+        gap: 23px;
+        margin-top: 21px;
+      }
+
+      .sauce {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        min-height: 40px;
+        padding: 0 16px 0 13px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--tile);
+        color: #eee;
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .sauce span:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .sauce span:last-child {
+        margin-left: 12px;
+        white-space: nowrap;
+      }
+
+      .cart-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: flex-end;
+        background: rgba(0, 0, 0, 0.62);
+        z-index: 20;
+      }
+
+      .cart-overlay[hidden] {
+        display: none;
+      }
+
+      .cart-panel {
+        width: 100%;
+        max-height: 82%;
+        display: flex;
+        flex-direction: column;
+        background: #222;
+        border-radius: 16px 16px 0 0;
+      }
+
+      .cart-header,
+      .cart-footer {
+        padding: 16px;
+      }
+
+      .cart-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #333;
+      }
+
+      .cart-title {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .panel-note {
+        margin: 6px 16px 0;
+        padding: 9px 11px;
+        border-radius: 8px;
+        background: #333;
+        color: #cfcfcf;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .panel-note[hidden] {
+        display: none;
+      }
+
+      .close-button {
+        border: 0;
+        background: transparent;
+        color: #aaa;
+        font-size: 28px;
+      }
+
+      .cart-items {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px;
+      }
+
+      .cart-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 10px;
+        align-items: center;
+        min-height: 68px;
+        margin-bottom: 8px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: #2d2d2d;
+      }
+
+      .cart-item-name {
+        overflow: hidden;
+        font-size: 16px;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .cart-item-detail {
+        margin-top: 4px;
+        color: #aaa;
+        font-size: 12px;
+        line-height: 1.25;
+      }
+
+      .cart-item-price {
+        color: #fff;
+        font-size: 16px;
+        white-space: nowrap;
+      }
+
+      .remove-button {
+        width: 30px;
+        height: 30px;
+        border: 0;
+        border-radius: 6px;
+        background: #444;
+        color: #ff8585;
+        font-size: 20px;
+      }
+
+      .cart-footer {
+        border-top: 1px solid #333;
+      }
+
+      .total-line {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 12px;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .checkout-form {
+        display: grid;
+        gap: 10px;
+      }
+
+      .table-input {
+        width: 100%;
+        height: 44px;
+        border: 1px solid #444;
+        border-radius: 8px;
+        background: #333;
+        color: #fff;
+        padding: 0 12px;
+        font-size: 16px;
+      }
+
+      .checkout-button {
+        height: 48px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--blue);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .checkout-button:disabled {
+        opacity: 0.55;
+      }
+
+      .bill-order {
+        margin-bottom: 10px;
+        padding: 12px;
+        border-radius: 8px;
+        background: #2d2d2d;
+      }
+
+      .bill-order-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .bill-order-items {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+        color: #d8d8d8;
+        font-size: 13px;
+        line-height: 1.3;
+      }
+
+      .bill-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .bill-line span:first-child {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .empty {
+        padding: 36px 12px;
+        color: #aaa;
+        text-align: center;
+      }
+
+      @media (max-width: 520px) {
+        body {
+          background: var(--screen);
+        }
+
+        .page {
+          display: block;
+          padding: 0;
+        }
+
+        .app {
+          width: 100vw;
+          height: 100dvh;
+          min-height: 0;
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .title {
+          font-size: clamp(32px, 9vw, 40px);
+        }
+
+        .tab {
+          font-size: 17px;
+        }
+
+        .menu-row {
+          grid-template-columns: 74px minmax(0, 1fr) 38px;
+          gap: 18px;
+        }
+
+        .menu-name,
+        .menu-price {
+          font-size: clamp(19px, 5.3vw, 22px);
+        }
+
+        .bottom-bar {
+          font-size: clamp(18px, 5vw, 21px);
+        }
+
+        .segmented {
+          grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+        }
+
+        .pill {
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="app">
+        <section class="screen" id="menu-screen" aria-label="メニュー">
+          <header class="app-header">
+            <div>
+              <div class="eyebrow">テーブルA</div>
+              <div class="title">メニュー</div>
+            </div>
+            <button class="bill-button" type="button" onclick="openBill()">お会計</button>
+          </header>
+
+          <nav class="tabs" id="tabs" aria-label="カテゴリ"></nav>
+          <div class="menu-list" id="menu-list"></div>
+
+          <button class="bottom-bar" id="view-cart-button" type="button" onclick="openCart()">
+            <span class="cart-label">
+              <svg class="cart-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <path d="M4 6h4l3 16h13l3-11H10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="13" cy="27" r="2.5" fill="currentColor" />
+                <circle cx="24" cy="27" r="2.5" fill="currentColor" />
+              </svg>
+              <span id="cart-button-label">カートを見る (0点)</span>
+            </span>
+            <span class="cart-price" id="cart-button-total">￥0</span>
+          </button>
+        </section>
+
+        <section class="screen" id="detail-screen" aria-label="商品を選ぶ" hidden>
+          <header class="app-header">
+            <div>
+              <button class="back-button" type="button" onclick="showMenu()">&lt;メインメニュー</button>
+              <div class="title">商品を選ぶ</div>
+            </div>
+          </header>
+
+          <div class="detail-body">
+            <div class="hero-image" id="detail-image" aria-hidden="true">
+              <svg viewBox="0 0 160 120" fill="none">
+                <path d="M25 38h31l12-13h31l13 13h21a8 8 0 0 1 8 8v47a8 8 0 0 1-8 8H25a8 8 0 0 1-8-8V46a8 8 0 0 1 8-8Z" stroke="#000" stroke-width="12" stroke-linejoin="round" />
+                <circle cx="80" cy="70" r="23" stroke="#000" stroke-width="12" />
+              </svg>
+            </div>
+
+            <h1 class="product-title" id="detail-title">元祖・醤油唐揚げ定食</h1>
+            <div class="product-subtitle" id="detail-subtitle">ご飯・味噌汁付き</div>
+            <p class="product-description" id="detail-description">当店1番人気！秘伝の醤油タレに<br />漬け込んだジューシーな唐揚げ</p>
+
+            <div id="detail-options-top"></div>
+
+            <div class="quantity">
+              <div class="option-label">数量</div>
+              <div class="quantity-controls">
+                <button class="round-button" type="button" onclick="changeQty(-1)">−</button>
+                <span class="quantity-value" id="quantity-value">1</span>
+                <button class="round-button" type="button" onclick="changeQty(1)">＋</button>
+              </div>
+            </div>
+
+            <div id="detail-options-bottom"></div>
+          </div>
+
+          <button class="bottom-bar" type="button" onclick="addSelectedToCart()">
+            <span class="cart-label">
+              <svg class="cart-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <path d="M4 6h4l3 16h13l3-11H10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                <circle cx="13" cy="27" r="2.5" fill="currentColor" />
+                <circle cx="24" cy="27" r="2.5" fill="currentColor" />
+              </svg>
+              カートに追加
+            </span>
+            <span class="cart-price" id="detail-price">￥950</span>
+          </button>
+        </section>
+
+        <div class="cart-overlay" id="cart-overlay" hidden>
+          <section class="cart-panel" aria-label="カート">
+            <header class="cart-header">
+              <h2 class="cart-title">今回の注文</h2>
+              <button class="close-button" type="button" onclick="closeCart()">×</button>
+            </header>
+            <div class="cart-items" id="cart-items"></div>
+            <footer class="cart-footer">
+              <div class="total-line">
+                <span>今回の合計</span>
+                <span id="cart-total">￥0</span>
+              </div>
+              <form class="checkout-form" onsubmit="submitOrder(event)">
+                <input class="table-input" type="text" name="table" value="テーブルA" />
+                <button class="checkout-button" id="checkout-button" type="submit">注文を送信</button>
+              </form>
+            </footer>
+          </section>
+        </div>
+
+        <div class="cart-overlay" id="bill-overlay" hidden>
+          <section class="cart-panel" aria-label="お会計">
+            <header class="cart-header">
+              <h2 class="cart-title">お会計</h2>
+              <button class="close-button" type="button" onclick="closeBill()">×</button>
+            </header>
+            <div class="panel-note" id="bill-cart-note" hidden></div>
+            <div class="cart-items" id="bill-orders"></div>
+            <footer class="cart-footer">
+              <div class="total-line">
+                <span>お会計合計</span>
+                <span id="bill-total">￥0</span>
+              </div>
+              <form class="checkout-form" method="post" action="/bill/checkout">
+                <input class="table-input" type="text" name="table" value="テーブルA" />
+                <button class="checkout-button" id="bill-checkout-button" type="submit">お会計する</button>
+              </form>
+            </footer>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <template id="camera-template">
+      <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <path d="M18 25h7l4-5h9l4 5h6a4 4 0 0 1 4 4v19a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4V29a4 4 0 0 1 4-4Z" stroke="#000" stroke-width="5" stroke-linejoin="round" />
+        <circle cx="33" cy="38" r="8" stroke="#000" stroke-width="5" />
+      </svg>
+    </template>
+
+    <script>
+      const CATEGORIES = {{ menu | tojson }};  // [{id, name, items: [{id, name, base_price, option_groups: [...], ...}]}]
+      const MENU = CATEGORIES.flatMap((c) => c.items);
+
+      let activeCategory = CATEGORIES.length ? CATEGORIES[0].name : "";
+      let selectedItem = MENU.find((item) => item.customizable) || MENU[0];
+      let selections = { qty: 1, choices: {} };  // choices: { group_id: choice_id }
+
+      function yen(value) {
+        return `￥${value}`;
+      }
+
+      function cameraIcon() {
+        return document.getElementById("camera-template").innerHTML;
+      }
+
+      function escapeAttr(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function itemImage(item) {
+        if (item.image_url) {
+          return `<img src="${escapeAttr(item.image_url)}" alt="${escapeAttr(item.name)}">`;
+        }
+        return cameraIcon();
+      }
+
+      function renderTabs() {
+        const tabs = document.getElementById("tabs");
+        tabs.innerHTML = CATEGORIES.map((category) => `
+          <button class="tab ${category.name === activeCategory ? "is-active" : ""}" type="button" onclick="setCategory('${category.name}')">${category.name}</button>
+        `).join("");
+      }
+
+      function renderMenu() {
+        renderTabs();
+        const list = document.getElementById("menu-list");
+        const category = CATEGORIES.find((c) => c.name === activeCategory);
+        const items = category ? category.items : [];
+
+        if (!items.length) {
+          list.innerHTML = '<div class="empty">商品がありません</div>';
+          return;
+        }
+
+        list.innerHTML = items.map((item) => `
+          <button class="menu-row" type="button" onclick="${item.customizable ? `openDetail('${item.id}')` : `quickAdd('${item.id}')`}">
+            <span class="thumb">${itemImage(item)}</span>
+            <span>
+              <span class="menu-name">${item.name}</span>
+              <span class="menu-price">${item.base_price}円</span>
+            </span>
+            <span class="add-circle" aria-hidden="true">+</span>
+          </button>
+        `).join("");
+      }
+
+      function setCategory(category) {
+        activeCategory = category;
+        renderMenu();
+      }
+
+      function showMenu() {
+        document.getElementById("detail-screen").hidden = true;
+        document.getElementById("menu-screen").hidden = false;
+      }
+
+      function openDetail(itemId) {
+        selectedItem = MENU.find((item) => item.id === itemId);
+        selections = { qty: 1, choices: {} };
+        (selectedItem.option_groups || []).forEach((group) => {
+          const def = group.choices.find((c) => c.is_default) || group.choices[0];
+          if (def) selections.choices[group.id] = def.id;
+        });
+        document.getElementById("detail-image").innerHTML = itemImage(selectedItem);
+        document.getElementById("detail-title").textContent = selectedItem.name;
+        document.getElementById("detail-subtitle").textContent = selectedItem.subtitle || "";
+        document.getElementById("detail-description").innerHTML = (selectedItem.description || "").replace(/\n/g, "<br />");
+        renderOptionGroups();
+        document.getElementById("menu-screen").hidden = true;
+        document.getElementById("detail-screen").hidden = false;
+        updateDetailPrice();
+      }
+
+      function renderOptionGroups() {
+        const groups = selectedItem.option_groups || [];
+        const top = document.getElementById("detail-options-top");
+        const bottom = document.getElementById("detail-options-bottom");
+        top.innerHTML = "";
+        bottom.innerHTML = "";
+
+        groups.forEach((group, idx) => {
+          const wrap = document.createElement("div");
+          wrap.className = "option-group";
+          wrap.innerHTML = `
+            <div class="option-label">${group.name}</div>
+            <div class="segmented" data-group="${group.id}">
+              ${group.choices.map((choice) => `
+                <div class="choice">
+                  <button class="pill ${selections.choices[group.id] === choice.id ? "is-active" : ""}" type="button" data-choice="${choice.id}">${choice.name}</button>
+                  <div class="modifier-price">${choice.price_delta > 0 ? `*+${choice.price_delta}円` : choice.price_delta < 0 ? `*${choice.price_delta}円` : ""}</div>
+                </div>
+              `).join("")}
+            </div>
+          `;
+          wrap.querySelectorAll("[data-choice]").forEach((button) => {
+            button.addEventListener("click", () => {
+              selections.choices[group.id] = button.dataset.choice;
+              renderOptionGroups();
+              updateDetailPrice();
+            });
+          });
+          // put first two groups above the quantity control, rest below (matches old layout roughly)
+          (idx < 2 ? top : bottom).appendChild(wrap);
+        });
+
+        document.getElementById("quantity-value").textContent = selections.qty;
+      }
+
+      function unitPrice() {
+        let price = Number(selectedItem.base_price);
+        const groups = selectedItem.option_groups || [];
+        groups.forEach((group) => {
+          const choiceId = selections.choices[group.id];
+          const choice = group.choices.find((c) => c.id === choiceId);
+          if (choice) price += Number(choice.price_delta);
+        });
+        return price;
+      }
+
+      function updateDetailPrice() {
+        document.getElementById("detail-price").textContent = yen(unitPrice() * selections.qty);
+      }
+
+      function changeQty(delta) {
+        selections.qty = Math.max(1, selections.qty + delta);
+        document.getElementById("quantity-value").textContent = selections.qty;
+        updateDetailPrice();
+      }
+
+      async function quickAdd(itemId) {
+        await addToCart({ item_id: itemId, qty: 1, choice_ids: [] });
+      }
+
+      async function addSelectedToCart() {
+        await addToCart({
+          item_id: selectedItem.id,
+          qty: selections.qty,
+          choice_ids: Object.values(selections.choices),
+        });
+        showMenu();
+      }
+
+      async function addToCart(payload) {
+        const res = await fetch("/api/cart/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        updateCartUI(await res.json());
+      }
+
+      async function removeFromCart(key) {
+        const res = await fetch("/api/cart/remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key }),
+        });
+        updateCartUI(await res.json());
+      }
+
+      async function loadCart() {
+        const res = await fetch("/api/cart");
+        updateCartUI(await res.json());
+      }
+
+      async function loadBill() {
+        const res = await fetch("/api/bill");
+        const data = await res.json();
+        updateBillUI(data);
+        return data;
+      }
+
+      function updateCartUI(data) {
+        const count = data.count || 0;
+        document.getElementById("cart-button-label").textContent = `カートを見る (${count}点)`;
+        document.getElementById("cart-button-total").textContent = yen(data.total || 0);
+        document.getElementById("cart-total").textContent = yen(data.total || 0);
+        document.getElementById("checkout-button").disabled = count === 0;
+
+        const items = document.getElementById("cart-items");
+        if (!data.cart || !data.cart.length) {
+          items.innerHTML = '<div class="empty">カートは空です</div>';
+          return;
+        }
+
+        items.innerHTML = data.cart.map((item) => `
+          <div class="cart-item">
+            <div>
+              <div class="cart-item-name">${item.name}</div>
+              <div class="cart-item-detail">${item.option_summary || ""}${item.option_summary ? "<br />" : ""}数量: ${item.qty}</div>
+            </div>
+            <div class="cart-item-price">${yen(item.price * item.qty)}</div>
+            <button class="remove-button" type="button" onclick='removeFromCart(${JSON.stringify(item.key)})'>−</button>
+          </div>
+        `).join("");
+      }
+
+      function updateBillUI(data) {
+        const orders = data.orders || [];
+        const hasUnsentCart = (data.cart_count || 0) > 0;
+        const billOrders = document.getElementById("bill-orders");
+        const note = document.getElementById("bill-cart-note");
+        document.getElementById("bill-total").textContent = yen(data.total || 0);
+        document.getElementById("bill-checkout-button").disabled = orders.length === 0 || hasUnsentCart;
+
+        if (hasUnsentCart) {
+          note.hidden = false;
+          note.textContent = `未送信の商品が${data.cart_count}点あります。先に「注文を送信」すると、お会計に追加されます。`;
+        } else {
+          note.hidden = true;
+          note.textContent = "";
+        }
+
+        if (!orders.length) {
+          billOrders.innerHTML = '<div class="empty">まだ注文がありません</div>';
+          return;
+        }
+
+        billOrders.innerHTML = orders.map((order, index) => `
+          <div class="bill-order">
+            <div class="bill-order-title">
+              <span>注文 ${index + 1}</span>
+              <span>${yen(order.total)}</span>
+            </div>
+            <div class="cart-item-detail">注文番号: ${order.id}</div>
+            <div class="bill-order-items">
+              ${order.items.map((item) => `
+                <div class="bill-line">
+                  <span>${item.name} × ${item.qty}${item.option_summary ? ` / ${item.option_summary}` : ""}</span>
+                  <span>${yen(item.price * item.qty)}</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `).join("");
+      }
+
+      function openCart() {
+        document.getElementById("cart-overlay").hidden = false;
+      }
+
+      function closeCart() {
+        document.getElementById("cart-overlay").hidden = true;
+      }
+
+      async function openBill() {
+        await loadBill();
+        document.getElementById("bill-overlay").hidden = false;
+      }
+
+      function closeBill() {
+        document.getElementById("bill-overlay").hidden = true;
+      }
+
+      async function submitOrder(event) {
+        event.preventDefault();
+        const tableInput = event.currentTarget.elements.namedItem("table");
+        const table = tableInput.value || "テーブルA";
+        const res = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ table }),
+        });
+
+        if (!res.ok) {
+          await loadCart();
+          return;
+        }
+
+        const data = await res.json();
+        updateCartUI({
+          cart: data.cart,
+          total: data.cart_total,
+          count: data.cart_count,
+        });
+        updateBillUI(data);
+        closeCart();
+        document.getElementById("bill-overlay").hidden = false;
+      }
+
+      renderMenu();
+      loadCart();
+      loadBill();
+    </script>
+  </body>
+</html>
