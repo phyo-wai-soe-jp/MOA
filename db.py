@@ -10,7 +10,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@12
 
 SESSION_LIFETIME_HOURS = 3
 
-CATEGORY_ORDER = ["定食", "丼もの", "単品・おつまみ", "盛り合わせ", "期間限定"]
+CATEGORY_ORDER = ["定食", "丼もの", "単品・おつまみ", "盛り合わせ", "期間限定", "ドリンク", "酒類"]
 
 OPTION_GROUPS_BY_MENU_ID = {
     1: ["ご飯の量", "唐揚げの個数", "ソース追加"],
