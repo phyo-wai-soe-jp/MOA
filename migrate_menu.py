@@ -50,6 +50,9 @@ def main():
     conn = psycopg2.connect(DATABASE_URL)
     conn.autocommit = True
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    menu_path = os.path.join(os.path.dirname(__file__), "menu.csv")
+    with open(menu_path, newline="", encoding="utf-8") as f:
+        menu_rows = list(csv.DictReader(f))
 
     # Apply schema (safe to re-run: CREATE TABLE/EXTENSION IF NOT EXISTS)
     schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -58,11 +61,14 @@ def main():
     print("Schema applied")
 
     cur.execute("SELECT COUNT(*) AS n FROM menu_items")
-    has_menu = cur.fetchone()["n"] > 0
+    menu_count = cur.fetchone()["n"]
     cur.execute("SELECT COUNT(*) AS n FROM order_items")
     has_order_history = cur.fetchone()["n"] > 0
-    if has_menu and has_order_history:
+    if has_order_history:
         print("Order history exists, keeping existing menu data.")
+        return
+    if menu_count == len(menu_rows):
+        print("Menu already seeded, skipping.")
         return
 
     cur.execute("DELETE FROM option_choices")
@@ -82,23 +88,21 @@ def main():
 
     # items from csv
     item_ids = {}
-    with open(os.path.join(os.path.dirname(__file__), "menu.csv"), newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(reader):
-            menu_id = int(row["menu_id"])
-            cur.execute(
-                "INSERT INTO menu_items (category_id, name, base_price, image_url, description, sort_order) "
-                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
-                (
-                    category_ids[row["category"].strip()],
-                    row["name"].strip(),
-                    int(row["base_price"]),
-                    row["image_url"].strip() or None,
-                    row.get("description", "").strip() or None,
-                    i + 1,
-                ),
-            )
-            item_ids[menu_id] = cur.fetchone()["id"]
+    for i, row in enumerate(menu_rows):
+        menu_id = int(row["menu_id"])
+        cur.execute(
+            "INSERT INTO menu_items (category_id, name, base_price, image_url, description, sort_order) "
+            "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (
+                category_ids[row["category"].strip()],
+                row["name"].strip(),
+                int(row["base_price"]),
+                row["image_url"].strip() or None,
+                row.get("description", "").strip() or None,
+                i + 1,
+            ),
+        )
+        item_ids[menu_id] = cur.fetchone()["id"]
     print(f"Inserted {len(item_ids)} menu items")
 
     # option groups + choices, attached to specific items
