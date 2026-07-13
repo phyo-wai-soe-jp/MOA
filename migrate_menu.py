@@ -53,6 +53,7 @@ def main():
     menu_path = os.path.join(os.path.dirname(__file__), "menu.csv")
     with open(menu_path, newline="", encoding="utf-8") as f:
         menu_rows = list(csv.DictReader(f))
+    expected_names = [row["name"].strip() for row in menu_rows]
 
     # Apply schema (safe to re-run: CREATE TABLE/EXTENSION IF NOT EXISTS)
     schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
@@ -60,17 +61,21 @@ def main():
         cur.execute(f.read())
     print("Schema applied")
 
-    cur.execute("SELECT COUNT(*) AS n FROM menu_items")
-    menu_count = cur.fetchone()["n"]
-    cur.execute("SELECT COUNT(*) AS n FROM order_items")
-    has_order_history = cur.fetchone()["n"] > 0
-    if has_order_history:
-        print("Order history exists, keeping existing menu data.")
-        return
-    if menu_count == len(menu_rows):
+    cur.execute("SELECT name FROM menu_items ORDER BY sort_order")
+    current_names = [row["name"] for row in cur.fetchall()]
+    if current_names == expected_names:
         print("Menu already seeded, skipping.")
         return
 
+    if current_names:
+        print("Existing menu differs from menu.csv; clearing old menu and order data.")
+    cur.execute("DELETE FROM payments")
+    cur.execute("DELETE FROM order_status_history")
+    cur.execute("DELETE FROM order_item_options")
+    cur.execute("DELETE FROM order_items")
+    cur.execute("DELETE FROM orders")
+    cur.execute("DELETE FROM sessions")
+    cur.execute("DELETE FROM qr_codes")
     cur.execute("DELETE FROM option_choices")
     cur.execute("DELETE FROM option_groups")
     cur.execute("DELETE FROM menu_items")
