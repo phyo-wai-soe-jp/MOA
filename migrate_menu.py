@@ -57,13 +57,13 @@ def main():
         cur.execute(f.read())
     print("Schema applied")
 
+    cur.execute("SELECT COUNT(*) AS n FROM menu_items")
+    has_menu = cur.fetchone()["n"] > 0
     cur.execute("SELECT COUNT(*) AS n FROM order_items")
     has_order_history = cur.fetchone()["n"] > 0
-    if has_order_history:
-        raise RuntimeError(
-            "Order history exists, so the menu was not replaced. "
-            "Use a fresh database or archive existing orders before reseeding."
-        )
+    if has_menu and has_order_history:
+        print("Order history exists, keeping existing menu data.")
+        return
 
     cur.execute("DELETE FROM option_choices")
     cur.execute("DELETE FROM option_groups")

@@ -32,7 +32,7 @@ def init_admin():
     email = os.environ.get("ADMIN_EMAIL")
     password = os.environ.get("ADMIN_PASSWORD")
     if email and password:
-        db.create_staff("Admin", email, generate_password_hash(password), role=1)
+        db.create_staff("Admin", email, generate_password_hash(password, method="pbkdf2:sha256"), role=1)
 
 
 init_admin()

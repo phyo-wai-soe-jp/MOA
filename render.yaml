@@ -9,7 +9,8 @@ services:
     name: mobile-order-app
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python migrate_menu.py
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python migrate_menu.py
     startCommand: gunicorn app:app
     envVars:
       - key: SECRET_KEY
